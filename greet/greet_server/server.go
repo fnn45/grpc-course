@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"grpc-course/greet/greetpb"
 	"io"
@@ -17,6 +18,11 @@ import (
 )
 
 type server struct{}
+var (
+	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
+	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
+)
+
 
 func (s *server) GreetWithDeadline(ctx context.Context,req *greet_pb.GreetWithDeadlineRequest) (*greet_pb.GreetWithDeadlineResponse, error) {
 	for i := 0 ; i < 3; i++ {
@@ -116,7 +122,9 @@ func main()  {
 	if err != nil {
 		log.Fatal("Failed to listen %v", err)
 	}
-	opts := []grpc.ServerOption{}
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(ensureValidToken),
+	}
 	tls := true
 	if tls {
 		certFile := "ssl/server.crt"
@@ -135,4 +143,20 @@ func main()  {
 	if err := s.Serve(lis); err != nil {
 		log.Fatal("failed to serve", err)
 	}
+}
+
+func ensureValidToken(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, errMissingMetadata
+	}
+	fmt.Println("Interceptor triggered!!!!!")
+	fmt.Println("Metadata is: ", md )
+	// The keys within metadata.MD are normalized to lowercase.
+	// See: https://godoc.org/google.golang.org/grpc/metadata#New
+	//if !valid(md["authorization"]) {
+	//	return nil, errInvalidToken
+	//}
+	// Continue execution of handler after ensuring a valid token.
+	return handler(ctx, req)
 }
